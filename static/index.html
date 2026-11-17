@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Internship Radar</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+      form { display: grid; gap: 0.75rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      label { display: grid; gap: 0.35rem; }
+      input, button { font: inherit; padding: 0.65rem; }
+      button { grid-column: 1 / -1; cursor: pointer; }
+      #results { display: grid; gap: 1rem; margin-top: 1.5rem; }
+      .card { border: 1px solid #7774; border-radius: 0.5rem; padding: 1rem; }
+      .score { font-weight: 700; }
+      .meta { color: #777; }
+      .blockers { color: #b33; }
+      footer { margin-top: 2rem; color: #777; }
+      @media (max-width: 640px) { form { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Internship Radar</h1>
+      <form id="profile-form">
+        <label>Role<input name="role" required placeholder="Software Engineering Intern"></label>
+        <label>Location<input name="location" required placeholder="Finland"></label>
+        <label>Skills<input name="skills" placeholder="Python, FastAPI"></label>
+        <label>Languages<input name="languages" placeholder="English"></label>
+        <label>Work authorization<input name="work_authorization" required placeholder="Eligible to work in Finland"></label>
+        <label>Extra notes<input name="extra_notes" placeholder="Graduation year, preferences"></label>
+        <button type="submit">Find internships</button>
+      </form>
+      <p id="status" role="status"></p>
+      <section id="results"></section>
+    </main>
+    <footer id="footer">Provider: checking...</footer>
+
+    <script>
+      const form = document.queryElementById("profile-form");
+      const status = document.getElementById("status");
+      const results = document.getElementById("results");
+      const footer = document.getElementById("footer");
+
+      function splitList(value) {
+        return value.split(",").map(item => item.trim()).filter(Boolean);
+      }
+
+      form.addEventListener("submit", async event => {
+        event.preventDefault();
+        const data = new FormData(form);
+        const profile = {
+          role: data.get("role"),
+          location: data.get("location"),
+          skills: splitList(data.get("skills") || ""),
+          languages: splitList(data.get("languages") || ""),
+          work_authorization: data.get("work_authorization"),
+          extra_notes: data.get("extra_notes") || ""
+        };
+
+        status.textContent = "Searching...";
+        results.replaceChildren();
+        try {
+          const response = await fetch("/api/radar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(profile)
+          });
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.detail || "Radar request failed");
+          renderResults(body);
+        } catch (error) {
+          status.textContent = error.message;
+        }
+      });
+
+      function renderResults(body) {
+        status.textContent = body.message || `${body.results.length} ranked results`;
+        if (body.cached_count) {
+          const age = body.newest_cached_age_hours == null
+            ? ""
+            : ` (cached ${Math.max(0, body.newest_cached_age_hours).toFixed(1)} hours ago)`;
+          status.textContent += ` - ${body.cached_count} cached postings${age}`;
+        }
+        footer.textContent = `Provider: ${body.provider || "none / fallback unavailable"}`;
+
+        for (const match of body.results) {
+          const posting = match.posting;
+          const card = document.createElement("article");
+          card.className = "card";
+          card.innerHTML = `
+            <h2>${escapeHtml(posting.title)}</h2>
+            <p><strong>${escapeHtml(posting.company)}</strong> - ${escapeHtml(posting.location || "Location not stated")}</p>
+            <p class="score">Score: ${match.score}/100</p>
+            <p>Deadline: ${escapeHtml(posting.deadline || "Not stated")}</p>
+            ${match.reasons.length ? `<p>${match.reasons.map(escapeHtml).join("<br>")}</p>` : ""}
+            ${match.blockers.length ? `<p class="blockers">${match.blockers.map(escapeHtml).join("<br>")}</p>` : ""}
+            <p><a href="${escapeAttribute(posting.source_url)}" target="_blank" rel="noopener noreferrer">Source</a>
+            ${posting.apply_url ? ` - <a href="${escapeAttribute(posting.apply_url)}" target="_blank" rel="noopener noreferrer">Application page</a>` : ""}</p>
+          `;
+          results.append(card);
+        }
+      }
+
+      function escapeHtml(value) {
+        const element = document.createElement("span");
+        element.textContent = value == null ? "" : String(value);
+        return element.innerHTML;
+      }
+
+      function escapeAttribute(value) {
+        return escapeHtml(value).replaceAll('"', "&quot;");
+      }
+
+      fetch("/api/stats")
+        .then(response => response.json())
+        .then(stats => {
+          if (!stats.provider) {
+            footer.textContent = `Provider usage: ${Object.keys(stats.counters).join(", ") || "none"}${stats.cache_only ? " (cache-only)" : ""}`;
+          }
+        })
+        .catch(() => {});
+    </script>
+  </body>
+</html>

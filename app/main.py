@@ -1,6 +1,7 @@
 import time
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.cache import Cache
@@ -20,6 +21,9 @@ class RadarResponse(BaseModel):
     results: list[MatchResult]
     raw_source_links: list[str]
     message: str | None = None
+    cached_count: int = 0
+    newest_cached_age_hours: float | None = None
+    provider: str | None = None
 
 
 @app.get("/")
@@ -50,12 +54,28 @@ def run_radar(profile: Profile, request: Request) -> RadarResponse:
 
     extraction_service = ExtractionService(settings, cache=cache)
     postings = []
+    cached_times: list[float] = []
     for search_result in search_results[: settings.max_pages_per_run]:
         extracted = extraction_service.extract(search_result)
         if extracted.posting is not None:
             postings.append(extracted.posting)
+        if extracted.from_cache and extracted.cached_at is not None:
+            cached_times.append(extracted.cached_at)
 
     ranked = RankingService(settings, cache=cache).rank(profile, postings)
+    provider = next(
+        (
+            name
+            for name in ("anthropic", "gemini", "verda")
+            if f"llm_call:{name}" in cache.counters()
+        ),
+        None,
+    )
+    newest_cached_age = (
+        max(0.0, (time.time() - min(cached_times)) / 3600)
+        if cached_times
+        else None
+    )
     return RadarResponse(
         results=ranked,
         raw_source_links=[result.url for result in search_results],
@@ -66,6 +86,9 @@ def run_radar(profile: Profile, request: Request) -> RadarResponse:
                 for blocker in match.blockers
             ) else None
         ),
+        cached_count=len(cached_times),
+        newest_cached_age_hours=newest_cached_age,
+        provider=provider,
     )
 
 
@@ -75,3 +98,6 @@ def get_stats() -> dict[str, object]:
         "counters": cache.counters(),
         "cache_only": settings.cache_only,
     }
+
+
+app.mount("/static", StaticFiles(directory="static", html=True), name="static")

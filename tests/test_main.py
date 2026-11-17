@@ -34,3 +34,9 @@ class TestRadarAPI(unittest.TestCase):
         response = TestClient(app).post("/api/radar", json={"role": ""})
 
         self.assertEqual(response.status_code, 422)
+
+    def test_static_page_is_served(self) -> None:
+        response = TestClient(app).get("/static/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Internship Radar", response.text)
