@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.cache import Cache
 from app.config import settings
+from app.draft import DraftInput, DraftService
 from app.extract import ExtractionService
 from app.models import MatchResult, Profile
 from app.rank import RankingService
@@ -98,6 +99,11 @@ def get_stats() -> dict[str, object]:
         "counters": cache.counters(),
         "cache_only": settings.cache_only,
     }
+
+
+@app.post("/api/draft")
+def create_application_draft(draft_input: DraftInput):
+    return DraftService(settings, cache=cache).draft(draft_input)
 
 
 app.mount("/static", StaticFiles(directory="static", html=True), name="static")

@@ -47,10 +47,9 @@
         return value.split(",").map(item => item.trim()).filter(Boolean);
       }
 
-      form.addEventListener("submit", async event => {
-        event.preventDefault();
+      function readProfile() {
         const data = new FormData(form);
-        const profile = {
+        return {
           role: data.get("role"),
           location: data.get("location"),
           skills: splitList(data.get("skills") || ""),
@@ -58,6 +57,11 @@
           work_authorization: data.get("work_authorization"),
           extra_notes: data.get("extra_notes") || ""
         };
+      }
+
+      form.addEventListener("submit", async event => {
+        event.preventDefault();
+        const profile = readProfile();
 
         status.textContent = "Searching...";
         results.replaceChildren();
@@ -98,7 +102,39 @@
             ${match.blockers.length ? `<p class="blockers">${match.blockers.map(escapeHtml).join("<br>")}</p>` : ""}
             <p><a href="${escapeAttribute(posting.source_url)}" target="_blank" rel="noopener noreferrer">Source</a>
             ${posting.apply_url ? ` - <a href="${escapeAttribute(posting.apply_url)}" target="_blank" rel="noopener noreferrer">Application page</a>` : ""}</p>
+            <button type="button" data-draft>Draft opening</button>
+            <div data-draft-output></div>
           `;
+          card.querySelector("[data-draft]").addEventListener("click", async () => {
+            const output = card.querySelector("[data-draft-output]");
+            output.textContent = "Drafting...";
+            try {
+              const draftResponse = await fetch("/api/draft", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  profile: readProfile(),
+                  posting,
+                  posting_id: `${posting.company}-${posting.title}`.replaceAll(" ", "-").toLowerCase()
+                })
+              });
+              const draft = await draftResponse.json();
+              if (!draftResponse.ok) throw new Error(draft.detail || "Draft request failed");
+              output.replaceChildren();
+              const copy = document.createElement("button");
+              copy.type = "button";
+              copy.textContent = "Copy draft";
+              const paragraph = document.createElement("p");
+              paragraph.textContent = draft.text;
+              copy.addEventListener("click", async () => {
+                await navigator.clipboard.writeText(draft.text);
+                copy.textContent = "Copied";
+              });
+              output.append(paragraph, copy);
+            } catch (error) {
+              output.textContent = error.message;
+            }
+          });
           results.append(card);
         }
       }
