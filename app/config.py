@@ -42,8 +42,36 @@ class Settings:
     draft_ttl_seconds: int = 24 * 60 * 60
     max_queries_per_run: int = 5
     max_results_per_query: int = 10
-    max_pages_per_run: int = 25
+    max_pages_per_run: int = 10
     radar_rate_limit_seconds: int = 30
+    search_window_days: int = 45
+    max_posting_age_days: int = 120
+    include_domains: tuple[str, ...] = (
+        "greenhouse.io",
+        "lever.co",
+        "workable.com",
+        "teamtailor.com",
+        "duunitori.fi",
+    )
+    blocked_domains: tuple[str, ...] = (
+        "linkedin.com",
+        "facebook.com",
+        "instagram.com",
+        "reddit.com",
+        "medium.com",
+    )
+    blocked_url_patterns: tuple[str, ...] = (
+        "/in/",
+        "/pub/",
+        "/posts/",
+        "/post/",
+        "/feed/",
+        "/company/",
+        "/article/",
+        "/blog/",
+        "/news/",
+        "/profile/",
+    )
 
 
 def load_settings() -> Settings:
@@ -65,6 +93,8 @@ def load_settings() -> Settings:
         ),
         cache_only=_env_flag("CACHE_ONLY"),
         cache_db_path=os.getenv("CACHE_DB_PATH", "radar.db"),
+        search_window_days=int(os.getenv("SEARCH_WINDOW_DAYS", "45")),
+        max_posting_age_days=int(os.getenv("MAX_POSTING_AGE_DAYS", "120")),
     )
 
 

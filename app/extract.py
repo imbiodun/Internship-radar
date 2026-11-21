@@ -40,7 +40,7 @@ class ExtractionService:
         content_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
         cache_key = Cache.key_for(
             {
-                "schema_version": "posting-extraction-v1",
+                "schema_version": "posting-extraction-v2",
                 "source_url": result.url,
                 "content_hash": content_hash,
             }
@@ -84,8 +84,13 @@ class ExtractionService:
         return f"""
 Extract a single internship posting from the provided page evidence.
 Return only JSON matching the requested schema.
+First set page_type to job_posting only when the page is a single, specific job opening.
+Set page_type to profile for a person profile, article for a blog/news post,
+listing_index for a page listing many jobs, or other for unrelated pages.
+Set stale_season=true if the evidence clearly names a past season or year.
+Set posted_date only if a publication date is stated on the page.
 Use null when a nullable field is not explicitly supported by the evidence.
-Never infer a deadline, language requirement, eligibility rule, company, or title.
+Never infer a deadline, posted date, language requirement, eligibility rule, company, or title.
 The source_url must be exactly the provided URL.
 
 Source URL: {source_url}

@@ -87,6 +87,13 @@ Inspect cache and provider counters:
 curl http://127.0.0.1:8000/api/stats
 ```
 
+List, save, or delete postings:
+
+```bash
+curl http://127.0.0.1:8000/api/postings
+curl -X DELETE http://127.0.0.1:8000/api/postings/<posting-id>
+```
+
 ## Tests
 
 ```bash

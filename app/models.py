@@ -23,6 +23,12 @@ class Posting(BaseModel):
     apply_url: AnyHttpUrl | None = None
     source_url: AnyHttpUrl
     source_snippet: str | None = None
+    first_seen_at: float = 0.0
+    is_new: bool = False
+    page_type: str = "job_posting"
+    posted_date: date | None = None
+    stale_season: bool = False
+    date_unverified: bool = False
 
 
 class MatchResult(BaseModel):
@@ -36,3 +42,27 @@ class Draft(BaseModel):
     posting_id: str = Field(min_length=1)
     text: str = Field(min_length=1)
     sources_used: list[AnyHttpUrl] = Field(default_factory=list)
+
+
+class RunStats(BaseModel):
+    searched: int = 0
+    deduped: int = 0
+    extracted: int = 0
+    extraction_failed: int = 0
+    expired: int = 0
+    already_seen: int = 0
+    shown: int = 0
+    blocked_url: int = 0
+    not_a_posting: int = 0
+    stale: int = 0
+    date_unverified: int = 0
+
+
+class SavedPosting(BaseModel):
+    posting_id: str = Field(min_length=1)
+    posting: Posting
+    profile: Profile
+    score: int = Field(ge=0, le=100)
+    reasons: list[str] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+    saved_at: float

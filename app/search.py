@@ -1,4 +1,6 @@
 from datetime import date, timedelta
+import random
+import time
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
@@ -30,18 +32,36 @@ class SearchResult(BaseModel):
     cached_at: float | None = None
 
 
-def build_queries(profile: Profile, max_queries: int = 5) -> list[str]:
+def build_queries(
+    profile: Profile,
+    max_queries: int = 5,
+    seed: int | None = None,
+) -> list[str]:
+    rng = random.Random(seed if seed is not None else int(time.time()))
     language_text = " ".join(profile.languages)
-    base = f"{profile.role} internship {profile.location}".strip()
-    queries = [f"{base} {language_text}".strip()]
+    today = date.today()
+    next_season_year = today.year + (0 if today.month < 7 else 1)
+    role_synonyms = [
+        profile.role,
+        "software engineer",
+        "backend",
+        "full-stack",
+        "trainee",
+        "thesis position",
+    ]
+    location = profile.location.strip()
+    axes = [
+        f"{role} internship {location} summer {next_season_year}"
+        for role in role_synonyms
+    ]
+    rng.shuffle(axes)
+    if language_text:
+        axes = [f"{query} {language_text}" for query in axes]
     if profile.skills:
-        queries.append(f"{profile.role} internship {profile.skills[0]} {profile.location}")
-    if len(profile.skills) > 1:
-        queries.append(
+        axes.append(
             f"{profile.role} internship {' '.join(profile.skills[:3])} {profile.location}"
         )
-    queries.append(f"student {profile.role} internship {profile.location}")
-    return list(dict.fromkeys(queries))[:max_queries]
+    return list(dict.fromkeys(axes))[:max_queries]
 
 
 class SearchService:
@@ -54,31 +74,52 @@ class SearchService:
         self.config = config
         self.cache = cache or Cache(config.cache_db_path)
         self.client = client
+        self.blocked_url_count = 0
 
-    def search_profile(self, profile: Profile) -> list[SearchResult]:
+    def search_profile(
+        self,
+        profile: Profile,
+        refresh: bool = False,
+    ) -> list[SearchResult]:
         if self.config.cache_only:
             return self._search_queries(profile, client=None)
         if not self.config.exa_api_key:
             raise SearchError("EXA_API_KEY is not configured")
         client = self.client or Exa(self.config.exa_api_key)
-        return self._search_queries(profile, client=client)
+        return self._search_queries(profile, client=client, refresh=refresh)
 
     def _search_queries(
-        self, profile: Profile, client: SearchClient | None
+        self,
+        profile: Profile,
+        client: SearchClient | None,
+        refresh: bool = False,
     ) -> list[SearchResult]:
         all_results: list[SearchResult] = []
         seen: set[tuple[str, str]] = set()
-        published_after = (date.today() - timedelta(days=183)).isoformat()
-        for query in build_queries(profile, self.config.max_queries_per_run):
+        self.blocked_url_count = 0
+        published_after = (
+            date.today() - timedelta(days=self.config.search_window_days)
+        ).isoformat()
+        run_seed = int(time.time())
+        for index, query in enumerate(
+            build_queries(profile, self.config.max_queries_per_run, seed=run_seed)
+        ):
             parameters = {
                 "query": query,
                 "num_results": self.config.max_results_per_query,
                 "start_published_date": published_after,
                 "type": "neural",
                 "highlights": {"max_characters": 2000},
+                "exclude_domains": list(self.config.blocked_domains),
             }
-            cache_key = Cache.key_for({"schema_version": "exa-search-v1", **parameters})
-            cached = self.cache.get(cache_key, self.config.exa_search_ttl_seconds)
+            if index < 2:
+                parameters["include_domains"] = list(self.config.include_domains)
+            cache_key = Cache.key_for({"schema_version": "exa-search-v2", **parameters})
+            cached = (
+                None
+                if refresh
+                else self.cache.get(cache_key, self.config.exa_search_ttl_seconds)
+            )
             if cached is not None:
                 results = [
                     SearchResult.model_validate(
@@ -104,11 +145,25 @@ class SearchService:
                 )
 
             for result in results:
+                if self.is_blocked_url(result.url):
+                    self.blocked_url_count += 1
+                    continue
                 identity = self._identity(result)
                 if identity not in seen:
                     seen.add(identity)
                     all_results.append(result)
         return all_results
+
+    def is_blocked_url(self, url: str) -> bool:
+        parsed = urlsplit(url)
+        domain = parsed.netloc.lower().removeprefix("www.")
+        path = parsed.path.lower()
+        if any(
+            domain == blocked or domain.endswith(f".{blocked}")
+            for blocked in self.config.blocked_domains
+        ):
+            return True
+        return any(pattern in path for pattern in self.config.blocked_url_patterns)
 
     @staticmethod
     def _identity(result: SearchResult) -> tuple[str, str]:

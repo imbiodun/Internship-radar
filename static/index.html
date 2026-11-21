@@ -16,6 +16,19 @@
       .score { font-weight: 700; }
       .meta { color: #777; }
       .blockers { color: #b33; }
+      #toast {
+        position: fixed;
+        right: 1rem;
+        bottom: 1rem;
+        max-width: 320px;
+        padding: 0.75rem 1rem;
+        border: 1px solid #7774;
+        border-radius: 0.5rem;
+        background: #111;
+        color: #fff;
+        box-shadow: 0 0.25rem 1rem #0004;
+        z-index: 10;
+      }
       footer { margin-top: 2rem; color: #777; }
       @media (max-width: 640px) { form { grid-template-columns: 1fr; } }
     </style>
@@ -30,18 +43,38 @@
         <label>Languages<input name="languages" placeholder="English"></label>
         <label>Work authorization<input name="work_authorization" required placeholder="Eligible to work in Finland"></label>
         <label>Extra notes<input name="extra_notes" placeholder="Graduation year, preferences"></label>
+        <label><input type="checkbox" name="only_new"> Only new postings</label>
+        <label><input type="checkbox" name="refresh"> Refresh Exa search</label>
         <button type="submit">Find internships</button>
       </form>
       <p id="status" role="status"></p>
       <section id="results"></section>
     </main>
     <footer id="footer">Provider: checking...</footer>
+    <aside id="toast" role="status" aria-live="polite" hidden></aside>
 
     <script>
-      const form = document.queryElementById("profile-form");
+      const form = document.getElementById("profile-form");
       const status = document.getElementById("status");
       const results = document.getElementById("results");
       const footer = document.getElementById("footer");
+      const toast = document.getElementById("toast");
+
+      function showToast(stage, detail) {
+        toast.hidden = false;
+        toast.replaceChildren();
+        const stageElement = document.createElement("strong");
+        stageElement.textContent = stage;
+        const detailElement = document.createElement("div");
+        detailElement.textContent = detail;
+        toast.append(stageElement, detailElement);
+      }
+
+      function hideToast(delay = 0) {
+        window.setTimeout(() => {
+          toast.hidden = true;
+        }, delay);
+      }
 
       function splitList(value) {
         return value.split(",").map(item => item.trim()).filter(Boolean);
@@ -62,30 +95,60 @@
       form.addEventListener("submit", async event => {
         event.preventDefault();
         const profile = readProfile();
+        const submitButton = form.querySelector('button[type="submit"]');
 
         status.textContent = "Searching...";
         results.replaceChildren();
+        submitButton.disabled = true;
+        showToast("Preparing", `Searching for ${profile.role} in ${profile.location}`);
+        const progressTimer = window.setInterval(async () => {
+          try {
+            const progressResponse = await fetch("/api/progress");
+            if (!progressResponse.ok) return;
+            const progress = await progressResponse.json();
+            showToast(progress.stage, progress.detail);
+          } catch (_) {}
+        }, 500);
+        const timeout = setTimeout(() => {
+          status.textContent = "The search is taking too long. Check the server logs and try again.";
+        }, 120000);
         try {
-          const response = await fetch("/api/radar", {
+          const onlyNew = form.elements.namedItem("only_new").checked;
+          const refresh = form.elements.namedItem("refresh").checked;
+          const response = await fetch(
+            `/api/radar?t=${Date.now()}&only_new=${onlyNew}&refresh=${refresh}`,
+            {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(profile)
-          });
+            }
+          );
           const body = await response.json();
           if (!response.ok) throw new Error(body.detail || "Radar request failed");
           renderResults(body);
         } catch (error) {
           status.textContent = error.message;
+        } finally {
+          clearTimeout(timeout);
+          window.clearInterval(progressTimer);
+          hideToast(3000);
+          submitButton.disabled = false;
         }
       });
 
       function renderResults(body) {
         status.textContent = body.message || `${body.results.length} ranked results`;
+        if (!body.results.length) {
+          status.textContent = body.message || "No ranked results returned";
+        }
         if (body.cached_count) {
           const age = body.newest_cached_age_hours == null
             ? ""
             : ` (cached ${Math.max(0, body.newest_cached_age_hours).toFixed(1)} hours ago)`;
           status.textContent += ` - ${body.cached_count} cached postings${age}`;
+        }
+        if (body.stats) {
+          status.textContent += ` | Funnel: ${body.stats.searched} searched, ${body.stats.blocked_url} blocked URLs, ${body.stats.deduped} deduped, ${body.stats.extracted} extracted, ${body.stats.not_a_posting} not postings, ${body.stats.expired} expired, ${body.stats.stale} stale, ${body.stats.already_seen} already seen, ${body.stats.shown} shown`;
         }
         footer.textContent = `Provider: ${body.provider || "none / fallback unavailable"}`;
 
@@ -95,6 +158,8 @@
           card.className = "card";
           card.innerHTML = `
             <h2>${escapeHtml(posting.title)}</h2>
+            <p class="meta">${posting.is_new ? "New posting" : "Previously shown"}</p>
+            ${posting.date_unverified ? '<p class="blockers">Date unverified - freshness cannot be confirmed</p>' : ""}
             <p><strong>${escapeHtml(posting.company)}</strong> - ${escapeHtml(posting.location || "Location not stated")}</p>
             <p class="score">Score: ${match.score}/100</p>
             <p>Deadline: ${escapeHtml(posting.deadline || "Not stated")}</p>
@@ -102,9 +167,27 @@
             ${match.blockers.length ? `<p class="blockers">${match.blockers.map(escapeHtml).join("<br>")}</p>` : ""}
             <p><a href="${escapeAttribute(posting.source_url)}" target="_blank" rel="noopener noreferrer">Source</a>
             ${posting.apply_url ? ` - <a href="${escapeAttribute(posting.apply_url)}" target="_blank" rel="noopener noreferrer">Application page</a>` : ""}</p>
+            <button type="button" data-save>Save posting</button>
             <button type="button" data-draft>Draft opening</button>
             <div data-draft-output></div>
           `;
+          card.querySelector("[data-save]").addEventListener("click", async () => {
+            const button = card.querySelector("[data-save]");
+            try {
+              const saveResponse = await fetch("/api/postings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ profile: readProfile(), match })
+              });
+              if (!saveResponse.ok) {
+                const error = await saveResponse.json();
+                throw new Error(error.detail || "Could not save posting");
+              }
+              button.textContent = "Saved";
+            } catch (error) {
+              button.textContent = error.message;
+            }
+          });
           card.querySelector("[data-draft]").addEventListener("click", async () => {
             const output = card.querySelector("[data-draft-output]");
             output.textContent = "Drafting...";

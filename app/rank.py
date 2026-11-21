@@ -122,7 +122,15 @@ Postings:
                 message = "Application deadline has passed"
                 if message not in blockers:
                     blockers.append(message)
-            updated.append(result.model_copy(update={"blockers": blockers}))
+            score = result.score
+            if result.posting.date_unverified:
+                message = "Date unverified"
+                if message not in blockers:
+                    blockers.append(message)
+                score = max(0, score - 10)
+            updated.append(
+                result.model_copy(update={"blockers": blockers, "score": score})
+            )
         return sorted(updated, key=lambda result: result.score, reverse=True)
 
 

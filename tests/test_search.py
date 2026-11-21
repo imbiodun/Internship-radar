@@ -72,8 +72,25 @@ class TestSearch(unittest.TestCase):
         queries = build_queries(self.profile, max_queries=2)
 
         self.assertEqual(len(queries), 2)
-        self.assertIn("Finland", queries[0])
+        self.assertTrue(any("Finland" in query for query in queries))
         self.assertIn("English", queries[0])
+
+    def test_generated_queries_keep_the_requested_location(self) -> None:
+        profile = Profile(
+            role="Cyber Security",
+            location="Finland",
+            work_authorization="Eligible",
+        )
+
+        queries = build_queries(profile, max_queries=5, seed=42)
+
+        self.assertTrue(all("Finland" in query for query in queries))
+
+    def test_rotated_queries_change_with_seed(self) -> None:
+        first = build_queries(self.profile, max_queries=5, seed=1)
+        second = build_queries(self.profile, max_queries=5, seed=2)
+
+        self.assertNotEqual(first, second)
 
     def test_search_deduplicates_by_domain_and_title(self) -> None:
         client = FakeSearchClient()
@@ -99,3 +116,14 @@ class TestSearch(unittest.TestCase):
 
         self.assertTrue(all(result.from_cache for result in results))
         self.assertEqual(len(client.calls), 2)
+
+    def test_linkedin_profile_and_personal_paths_are_blocked(self) -> None:
+        service = SearchService(
+            self.config,
+            cache=Cache(self.config.cache_db_path),
+            client=FakeSearchClient(),
+        )
+
+        self.assertTrue(service.is_blocked_url("https://linkedin.com/in/some-person"))
+        self.assertTrue(service.is_blocked_url("https://example.com/blog/internships"))
+        self.assertFalse(service.is_blocked_url("https://jobs.example.com/internship/python"))
