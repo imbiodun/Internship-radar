@@ -7,3 +7,8 @@ __pycache__/
 .github/*
 !.github/
 !.github/Agents.md
+
+performance.db
+performance.db-*
+radar.db
+radar.db-*
