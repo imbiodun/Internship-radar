@@ -1,8 +1,12 @@
 # Internship Radar
 
-Internship Radar finds current software internships, checks them against a candidate profile, ranks the matches, and drafts an application opening for user approval.
+Internship Radar is an independently developed application that finds software internships, evaluates them against candidate profiles, ranks relevant opportunities, and generates tailored application drafts for user approval.
 
-The app is built for the Junction 2026 Exa challenge. It uses live APIs when keys are configured and SQLite caching to limit API costs.
+The project was initiated during Junction 2026, inspired by the Exa challenge, and developed independently beyond the hackathon.
+
+The application combines REST API development, external API integration, LLM orchestration, SQLite caching, automated testing, and performance engineering.
+
+The backend has been evaluated through automated load and stress testing with up to 1,000 concurrent virtual users, resulting in measurable improvements in reliability, resource management, response latency, and request throughput.
 
 ## Requirements
 
@@ -99,6 +103,63 @@ curl -X DELETE http://127.0.0.1:8000/api/postings/<posting-id>
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 ```
+
+## Performance Testing and Automation
+
+As an extension, the application was evaluated and optimised through automated REST API load and stress testing using Python and Locust.
+
+The project investigates application scalability, response correctness, resource management and performance bottlenecks under increasing concurrent user workloads.
+
+### Technologies
+
+- Python
+- Locust
+- FastAPI
+- SQLite
+- Bash scripting
+- Linux process monitoring
+- Python unittest
+- Git
+
+### Testing capabilities
+
+- Automated HTTP response and JSON structure validation.
+- Reproducible synthetic test data generation.
+- Load and stress testing with up to 1,000 concurrent virtual users.
+- Automated benchmark execution using Bash.
+- CSV and HTML performance reporting.
+- Functional regression testing following backend modifications.
+- Linux file descriptor and network socket monitoring.
+
+### Key results
+
+| Metric | Before | After |
+|---|---:|---:|
+| Retained database file descriptors | 329 | 0 |
+| Failed requests at 500 virtual users | 494 | 0 |
+| Failed requests at 1,000 virtual users | 799 | 0 |
+| Redundant MatchResult validation calls per posting | 4 | 1 |
+
+Following database resource-management improvements and Linux resource-limit configuration, an additional JSON validation optimisation produced the following observed benchmark results:
+
+| Performance metric | 500 users | 1,000 users |
+|---|---:|---:|
+| Average latency reduction | 24.04% | 46.29% |
+| P95 latency reduction | 21.88% | 73.81% |
+| Throughput increase | 14.36% | 65.36% |
+| Post-optimisation failure rate | 0% | 0% |
+
+All executed functional regression tests passed following the backend modifications.
+
+These results represent individual local benchmark experiments using 100 synthetic internship postings. They do not establish production capacity or guarantee equivalent improvements in other environments.
+
+### Documentation and reproducibility
+
+- [Performance testing methodology and execution guide](performance_tests/README.md)
+- [Benchmark results and technical investigation](benchmarks/README.md)
+- [Locust test implementation](performance_tests/locustfile.py)
+- [Synthetic data generator](performance_tests/seed_database.py)
+- [Automated benchmark runner](performance_tests/run_benchmarks.sh)
 
 ## Safety and cost controls
 
