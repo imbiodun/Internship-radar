@@ -5,6 +5,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from contextlib import contextmanager
+from collections.abc import Generator
 
 
 @dataclass(frozen=True)
@@ -19,10 +21,20 @@ class Cache:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    
+
+    @contextmanager
+    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
         connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
-        return connection
+
+        try:
+            connection.row_factory = sqlite3.Row
+
+            with connection:
+                yield connection
+
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
         with self._connect() as connection:
