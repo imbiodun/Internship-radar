@@ -1,8 +1,10 @@
 import sqlite3
 import time
+import json
 from pathlib import Path
 from typing import Any
-
+from contextlib import contextmanager
+from collections.abc import Generator
 from app.models import MatchResult, Profile, SavedPosting
 
 
@@ -12,10 +14,20 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    
+
+    @contextmanager
+    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
         connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
-        return connection
+
+        try:
+            connection.row_factory = sqlite3.Row
+
+            with connection:
+                yield connection
+
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
         with self._connect() as connection:
@@ -114,7 +126,6 @@ class Store:
             )
 
     def list_run_stats(self, limit: int = 20) -> list[dict[str, Any]]:
-        import json
 
         with self._connect() as connection:
             rows = connection.execute(
@@ -167,8 +178,6 @@ class Store:
         )
 
     def list_saved(self) -> list[SavedPosting]:
-        import json
-
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -177,19 +186,26 @@ class Store:
                 ORDER BY saved_at DESC
                 """
             ).fetchall()
+            saved_postings = []
 
-        return [
-            SavedPosting(
+        for row in rows:
+            match = MatchResult.model_validate_json(row["match_json"])
+
+            profile = Profile.model_validate_json(row["profile_json"])
+
+            saved_posting = SavedPosting(
                 posting_id=row["posting_id"],
-                posting=MatchResult.model_validate_json(row["match_json"]).posting,
-                profile=Profile.model_validate_json(row["profile_json"]),
-                score=MatchResult.model_validate_json(row["match_json"]).score,
-                reasons=MatchResult.model_validate_json(row["match_json"]).reasons,
-                blockers=MatchResult.model_validate_json(row["match_json"]).blockers,
+                posting=match.posting,
+                profile=profile,
+                score=match.score,
+                reasons=match.reasons,
+                blockers=match.blockers,
                 saved_at=row["saved_at"],
             )
-            for row in rows
-        ]
+
+            saved_postings.append(saved_posting)
+
+        return saved_postings
 
     def delete_saved(self, posting_id: str) -> bool:
         with self._connect() as connection:
