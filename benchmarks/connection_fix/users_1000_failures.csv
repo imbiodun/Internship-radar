@@ -1,0 +1,6 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,/api/postings,CatchResponseError('Unexpected status: 0'),173,2026-11-26T02:19:05Z,2026-11-26T02:20:31Z
+GET,/api/postings,CatchResponseError('Unexpected status: 500'),142,2026-11-26T02:19:14Z,2026-11-26T02:20:45Z
+GET,/api/stats,CatchResponseError('Unexpected status: 500'),196,2026-11-26T02:19:14Z,2026-11-26T02:20:46Z
+GET,/api/stats,CatchResponseError('Unexpected status: 0'),145,2026-11-26T02:19:05Z,2026-11-26T02:20:31Z
+GET,/api/progress,CatchResponseError('Unexpected status: 0'),143,2026-11-26T02:19:05Z,2026-11-26T02:20:31Z
