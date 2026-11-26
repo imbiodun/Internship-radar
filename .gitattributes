@@ -1,0 +1,2 @@
+# Exclude generated performance reports from language statistics
+benchmarks/** linguist-generated=true
