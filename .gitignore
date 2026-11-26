@@ -5,8 +5,8 @@ __pycache__/
 *.egg-info/
 
 .github/*
-!.github/
-!.github/Agents.md
+.github/
+
 
 performance.db
 performance.db-*
